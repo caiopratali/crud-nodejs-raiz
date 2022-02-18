@@ -1,15 +1,40 @@
 const http = require('http');
+const { URL } = require('url');
+const bodyParser = require('./helpers/bodyParser');
 
-const UserController = require('./controllers/UserController');
 const routes = require('./routes');
 
 const server = http.createServer((request, response) => {
-  console.log(`Request method: ${request.method} | Endpoint: ${request.url}`);
+  const parsedUrl = new URL(`http://localhost:3000${request.url}`);
 
-  const route = routes.find(routeObj => (routeObj.endpoint === request.url && routeObj.method === request.method));
+  console.log(`Request method: ${request.method} | Endpoint: ${parsedUrl.pathname}`);
+
+  let { pathname } = parsedUrl;
+  let id = null;
+
+  const splitEndpoint = pathname.split('/').filter(Boolean);
+
+  if(splitEndpoint.length > 1) {
+    pathname = `/${splitEndpoint[0]}/:id`;
+    id = splitEndpoint[1];
+  }
+
+  const route = routes.find(routeObj => (routeObj.endpoint === pathname && routeObj.method === request.method));
 
   if(route) {
-    route.handler(request, response);
+    request.query = Object.fromEntries(parsedUrl.searchParams);
+    request.params = { id };
+
+    response.send = (statusCode, body) => {
+      response.writeHead(statusCode, { 'Content-Type': 'application/json' });
+      response.end(JSON.stringify(body));
+    }
+
+    if (['POST', 'PUT', 'PATCH'].includes(request.method)) {
+      return bodyParser(request, () => route.handler(request, response));
+    }
+
+    return route.handler(request, response);
   } else {
     response.writeHead(404, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify({ error: 'not found' }));
